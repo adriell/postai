@@ -1,0 +1,277 @@
+'use client'
+import { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import Navbar from '@/components/Navbar'
+import { generate } from '@/lib/api'
+import { useAuth, AuthProvider } from '@/hooks/useAuth'
+
+const NICHOS = [
+  'Artesanato / crochê', 'Restaurante / gastronomia', 'Moda e vestuário',
+  'Beleza / estética', 'Fitness / saúde', 'Pet shop', 'Decoração',
+  'Educação / cursos', 'Negócio local', 'Tecnologia',
+]
+
+const TONES = [
+  { label: 'Descontraído',  value: 'descontraído e próximo' },
+  { label: 'Profissional',  value: 'profissional e confiante' },
+  { label: 'Inspirador',    value: 'inspirador e motivacional' },
+  { label: 'Divertido',     value: 'divertido com humor leve' },
+  { label: 'Elegante',      value: 'elegante e sofisticado' },
+]
+
+function DashboardInner() {
+  const router             = useRouter()
+  const { user, setUser }  = useAuth()
+  const fileInputRef       = useRef<HTMLInputElement>(null)
+
+  const [imageFile, setImageFile]  = useState<File | null>(null)
+  const [imagePreview, setPreview] = useState<string | null>(null)
+  const [nicho, setNicho]          = useState(NICHOS[0])
+  const [tone, setTone]            = useState(TONES[0].value)
+  const [extra, setExtra]          = useState('')
+  const [language, setLanguage]    = useState('pt-BR')
+  const [loading, setLoading]      = useState(false)
+  const [error, setError]          = useState('')
+  const [result, setResult]        = useState<{ caption: string; hashtags: string[]; processedImage: string } | null>(null)
+  const [copied, setCopied]        = useState(false)
+
+  function handleFile(file: File) {
+    if (file.size > 5 * 1024 * 1024) { setError('Imagem deve ter no máximo 5MB'); return }
+    setImageFile(file)
+    setPreview(URL.createObjectURL(file))
+    setResult(null)
+    setError('')
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    const file = e.dataTransfer.files[0]
+    if (file && file.type.startsWith('image/')) handleFile(file)
+  }
+
+  async function handleGenerate() {
+    if (!imageFile) { setError('Selecione uma imagem'); return }
+    if (!user) { router.push('/login'); return }
+    setError('')
+    setLoading(true)
+    try {
+      const res = await generate({ image: imageFile, nicho, tone, language, extra })
+      setResult({ caption: res.caption, hashtags: res.hashtags, processedImage: res.processedImage })
+      setUser({ ...user, credits: res.credits })
+    } catch (err: any) {
+      const msg = err.response?.data?.error || 'Erro ao gerar conteúdo'
+      if (err.response?.data?.code === 'NO_CREDITS') {
+        setError('Créditos esgotados. Faça upgrade do plano.')
+      } else {
+        setError(msg)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function copyAll() {
+    if (!result) return
+    const text = `${result.caption}\n\n${result.hashtags.join(' ')}`
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+  }
+
+  async function shareInstagram() {
+    if (!result) return
+    const text = `${result.caption}\n\n${result.hashtags.join(' ')}`
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({ text })
+        return
+      } catch {}
+    }
+    // fallback: copia e abre Instagram
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+    window.open('https://www.instagram.com', '_blank')
+  }
+
+  if (!user) return null
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      <main className="max-w-2xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-xl font-bold text-gray-900">Gerar post</h1>
+          <span className="text-sm bg-blue-50 text-blue-700 px-3 py-1 rounded-full font-medium">
+            {user.credits} crédito{user.credits !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {/* Upload */}
+        <div className="card mb-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">1 · Foto</p>
+          {imagePreview ? (
+            <div className="relative">
+              <img src={imagePreview} alt="preview" className="w-full max-h-56 object-cover rounded-lg" />
+              <button
+                onClick={() => { setImageFile(null); setPreview(null); setResult(null) }}
+                className="absolute top-2 right-2 bg-white rounded-full w-7 h-7 flex items-center justify-center shadow text-gray-500 hover:text-red-500 text-xs font-bold"
+              >✕</button>
+            </div>
+          ) : (
+            <div
+              className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50 transition"
+              onClick={() => fileInputRef.current?.click()}
+              onDrop={onDrop}
+              onDragOver={e => e.preventDefault()}
+            >
+              <div className="text-3xl mb-2 opacity-30">📷</div>
+              <p className="text-sm text-gray-500">Clique ou arraste a imagem aqui</p>
+              <p className="text-xs text-gray-400 mt-1">JPG, PNG ou WEBP · até 5MB</p>
+            </div>
+          )}
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+            onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+        </div>
+
+        {/* Configurações */}
+        <div className="card mb-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">2 · Configurações</p>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Nicho</label>
+              <select value={nicho} onChange={e => setNicho(e.target.value)} className="input text-sm">
+                {NICHOS.map(n => <option key={n}>{n}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Idioma</label>
+              <select value={language} onChange={e => setLanguage(e.target.value)} className="input text-sm">
+                <option value="pt-BR">Português (BR)</option>
+                <option value="en">English</option>
+                <option value="es">Español</option>
+              </select>
+            </div>
+          </div>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-600 mb-2">Tom da legenda</label>
+            <div className="flex flex-wrap gap-2">
+              {TONES.map(t => (
+                <button key={t.value}
+                  onClick={() => setTone(t.value)}
+                  className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                    tone === t.value
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
+                  }`}
+                >{t.label}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Detalhe extra <span className="text-gray-400">(opcional)</span></label>
+            <input type="text" value={extra} onChange={e => setExtra(e.target.value)}
+              className="input text-sm" placeholder="ex: promoção, lançamento, novo produto..." maxLength={300} />
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
+        )}
+
+        <button onClick={handleGenerate} disabled={loading || !imageFile} className="btn-primary w-full py-3 text-base mb-6">
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              </svg>
+              Gerando...
+            </span>
+          ) : 'Gerar legenda + hashtags'}
+        </button>
+
+        {/* Resultado */}
+        {result && (
+          <div className="space-y-4">
+            {/* Preview estilo Instagram */}
+            <div className="card overflow-hidden p-0">
+              {/* Header do post */}
+              <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 via-pink-400 to-orange-400 flex items-center justify-center text-white text-xs font-bold">
+                  {user.name?.[0]?.toUpperCase() ?? 'U'}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 leading-none">{user.name ?? 'você'}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{nicho}</p>
+                </div>
+              </div>
+
+              {/* Imagem processada */}
+              <img
+                src={result.processedImage}
+                alt="post"
+                className="w-full aspect-square object-cover"
+              />
+
+              {/* Ações */}
+              <div className="px-4 pt-3 pb-1 flex gap-3 text-gray-500 text-lg">
+                <span>🤍</span>
+                <span>💬</span>
+                <span>📤</span>
+              </div>
+
+              {/* Legenda + hashtags */}
+              <div className="px-4 pb-4">
+                <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  <span className="font-semibold text-gray-900">{user.name ?? 'você'} </span>
+                  {result.caption}
+                </p>
+                <p className="text-sm text-blue-500 mt-2 leading-relaxed">
+                  {result.hashtags.join(' ')}
+                </p>
+              </div>
+            </div>
+
+            {/* Botões de ação */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={copyAll}
+                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                {copied ? (
+                  <><span>✓</span> Copiado!</>
+                ) : (
+                  <><span>📋</span> Copiar tudo</>
+                )}
+              </button>
+
+              <button
+                onClick={shareInstagram}
+                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium text-white transition"
+                style={{ background: 'linear-gradient(135deg, #833ab4, #fd1d1d, #fcb045)' }}
+              >
+                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white">
+                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                </svg>
+                Compartilhar
+              </button>
+            </div>
+
+            <button onClick={handleGenerate} disabled={loading} className="btn-secondary w-full py-2.5 text-sm">
+              Gerar outra versão
+            </button>
+          </div>
+        )}
+      </main>
+    </div>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <AuthProvider>
+      <DashboardInner />
+    </AuthProvider>
+  )
+}

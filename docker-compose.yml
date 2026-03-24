@@ -1,0 +1,105 @@
+version: '3.9'
+
+# ─────────────────────────────────────────────
+#  PostAI — stack local (macOS / Docker Desktop)
+#  Portas escolhidas para não conflitar com
+#  serviços existentes (5432, 6379, 8080/8000)
+# ─────────────────────────────────────────────
+
+networks:
+  postai_net:
+    driver: bridge
+    name: postai_net
+
+volumes:
+  postai_pgdata:
+    name: postai_pgdata
+
+services:
+
+  # ── 1. Banco de dados PostgreSQL ───────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: postai_postgres
+    restart: unless-stopped
+    networks: [postai_net]
+    ports:
+      - "5434:5432"          # host:5434 → container:5432
+    environment:
+      POSTGRES_DB:       postai
+      POSTGRES_USER:     postai_user
+      POSTGRES_PASSWORD: postai_secret_local
+    volumes:
+      - postai_pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postai_user -d postai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── 2. pgAdmin (UI para o banco) ───────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: postai_pgadmin
+    restart: unless-stopped
+    networks: [postai_net]
+    ports:
+      - "5050:80"            # acesse http://localhost:5050
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    admin@postai.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── 3. API interna (Node/Express) ──────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: postai_api
+    restart: unless-stopped
+    networks: [postai_net]
+    ports:
+      - "3011:3011"          # host:3011 → container:3011
+    env_file: ./apps/api/.env
+    environment:
+      NODE_ENV:   development
+      PORT:       3011
+      DB_HOST:    postgres
+      DB_PORT:    5432
+      DB_NAME:    postai
+      DB_USER:    postai_user
+      DB_PASS:    postai_secret_local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # ── 4. Frontend Next.js ────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: postai_web
+    restart: unless-stopped
+    networks: [postai_net]
+    ports:
+      - "3010:3000"          # host:3010 → container:3000
+    env_file: ./apps/web/.env.local
+    environment:
+      NODE_ENV:            development
+      NEXT_PUBLIC_API_URL: http://localhost:3011
+      INTERNAL_API_URL:    http://api:3011
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
