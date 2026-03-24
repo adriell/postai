@@ -1,8 +1,9 @@
 require('dotenv').config();
-const express    = require('express');
-const helmet     = require('helmet');
-const cors       = require('cors');
-const rateLimit  = require('express-rate-limit');
+const express      = require('express');
+const helmet       = require('helmet');
+const cors         = require('cors');
+const cookieParser = require('cookie-parser');
+const rateLimit    = require('express-rate-limit');
 
 const { testConnection } = require('./db/client');
 const authRoutes         = require('./routes/auth');
@@ -14,7 +15,14 @@ const app  = express();
 const PORT = process.env.PORT || 3011;
 
 // ── Segurança ─────────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+}));
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3010').split(',');
 app.use(cors({
@@ -22,21 +30,22 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
     cb(new Error(`CORS bloqueado: ${origin}`));
   },
-  credentials: true
+  credentials: true,
 }));
 
 // ── Rate limiting global ──────────────────────────────────────
 app.use(rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60_000,
-  max:      parseInt(process.env.RATE_LIMIT_MAX) || 30,
+  max:      parseInt(process.env.RATE_LIMIT_MAX)        || 60,
   standardHeaders: true,
   legacyHeaders:   false,
-  message: { error: 'Muitas requisições. Aguarde um momento.' }
+  message: { error: 'Muitas requisições. Aguarde um momento.' },
 }));
 
-// ── Body parsers ──────────────────────────────────────────────
+// ── Body / cookie parsers ─────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
 
 // ── Health check ──────────────────────────────────────────────
 app.get('/health', async (_req, res) => {
@@ -56,7 +65,9 @@ app.use((_req, res) => res.status(404).json({ error: 'Rota não encontrada' }));
 // ── Error handler global ──────────────────────────────────────
 app.use((err, _req, res, _next) => {
   console.error('[ERROR]', err.message);
-  res.status(500).json({ error: err.message || 'Erro interno' });
+  // Em produção nunca vaza detalhes internos para o cliente
+  const message = process.env.NODE_ENV === 'production' ? 'Erro interno' : err.message;
+  res.status(err.status || 500).json({ error: message });
 });
 
 // ── Start ─────────────────────────────────────────────────────

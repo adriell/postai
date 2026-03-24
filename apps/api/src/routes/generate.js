@@ -5,11 +5,23 @@ const { z }      = require('zod');
 const Anthropic  = require('@anthropic-ai/sdk');
 const { v4: uuidv4 } = require('uuid');
 
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireVerified } = require('../middleware/auth');
 const { query }       = require('../db/client');
 
 const router   = express.Router();
-const upload   = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIME.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Apenas imagens JPEG, PNG e WebP são aceitas'));
+    }
+  },
+});
 const client   = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Rate limit extra apenas para geração
@@ -29,7 +41,7 @@ const generateSchema = z.object({
 });
 
 // POST /api/generate
-router.post('/', requireAuth, genLimit, upload.single('image'), async (req, res) => {
+router.post('/', requireAuth, requireVerified, genLimit, upload.single('image'), async (req, res) => {
   const genId = uuidv4();
 
   try {
