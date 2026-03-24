@@ -1,63 +1,48 @@
 import axios from 'axios'
-import Cookies from 'js-cookie'
-
-const TOKEN_KEY = 'postai_token'
 
 // Usa URL relativa para que o rewrite do Next.js faça o proxy para a API.
 // Em dev: next.config.js redireciona /api/* → localhost:3011
 // Em prod: next.config.js redireciona /api/* → Railway (via INTERNAL_API_URL)
+//
+// withCredentials: true garante que o cookie httpOnly (postai_token)
+// seja enviado automaticamente em todas as requisições.
 export const api = axios.create({
-  baseURL: '',
-  timeout: 30_000,
+  baseURL:         '',
+  timeout:         30_000,
+  withCredentials: true,
 })
 
-// Injeta token em todas as requisições
-api.interceptors.request.use((config) => {
-  const token = Cookies.get(TOKEN_KEY)
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
-})
-
-// Redireciona para login em 401
+// Redireciona para login em 401 (token expirado ou inválido)
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
+  async (err: any) => {
     if (err.response?.status === 401 && typeof window !== 'undefined') {
-      Cookies.remove(TOKEN_KEY)
+      // Limpa o cookie httpOnly no servidor antes de redirecionar
+      await api.post('/api/auth/logout').catch(() => {})
       window.location.href = '/login'
     }
     return Promise.reject(err)
   }
 )
 
-export function setToken(token: string) {
-  Cookies.set(TOKEN_KEY, token, { expires: 30, sameSite: 'strict' })
-}
-
-export function clearToken() {
-  Cookies.remove(TOKEN_KEY)
-}
-
-export function getToken() {
-  return Cookies.get(TOKEN_KEY)
-}
-
 // ── Auth ──────────────────────────────────────────────────────
 export async function login(email: string, password: string) {
   const { data } = await api.post('/api/auth/login', { email, password })
-  setToken(data.token)
   return data.user
 }
 
 export async function register(name: string, email: string, password: string) {
   const { data } = await api.post('/api/auth/register', { name, email, password })
-  setToken(data.token)
   return data.user
 }
 
 export async function getMe() {
   const { data } = await api.get('/api/auth/me')
   return data.user
+}
+
+export async function logout() {
+  await api.post('/api/auth/logout').catch(() => {})
 }
 
 // ── Generate ──────────────────────────────────────────────────

@@ -1,14 +1,22 @@
-const jwt   = require('jsonwebtoken');
+const jwt       = require('jsonwebtoken');
 const { query } = require('../db/client');
+
+const COOKIE_NAME = 'postai_token';
 
 async function requireAuth(req, res, next) {
   try {
-    const header = req.headers.authorization;
-    if (!header || !header.startsWith('Bearer ')) {
+    // Aceita token via cookie httpOnly (preferencial) ou Authorization: Bearer (fallback para clientes externos)
+    const cookieToken = req.cookies?.[COOKIE_NAME];
+    const headerToken = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.split(' ')[1]
+      : null;
+
+    const token = cookieToken || headerToken;
+
+    if (!token) {
       return res.status(401).json({ error: 'Token não fornecido' });
     }
 
-    const token   = header.split(' ')[1];
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
     const { rows } = await query(
@@ -37,4 +45,14 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, requireAdmin };
+function requireVerified(req, res, next) {
+  if (!req.user?.email_verified) {
+    return res.status(403).json({
+      error: 'Verifique seu e-mail antes de continuar.',
+      code:  'EMAIL_NOT_VERIFIED',
+    });
+  }
+  next();
+}
+
+module.exports = { requireAuth, requireAdmin, requireVerified, COOKIE_NAME };

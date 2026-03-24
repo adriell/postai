@@ -61,7 +61,8 @@ router.get('/users', async (req, res) => {
   const page   = Math.max(1, parseInt(req.query.page)  || 1);
   const limit  = Math.min(50, parseInt(req.query.limit) || 20);
   const offset = (page - 1) * limit;
-  const search = req.query.search ? `%${req.query.search}%` : null;
+  const rawSearch = typeof req.query.search === 'string' ? req.query.search.slice(0, 100) : null;
+  const search = rawSearch ? `%${rawSearch}%` : null;
 
   try {
     const params = search
@@ -119,9 +120,13 @@ router.patch('/users/:id/credits', async (req, res) => {
 
     await query(
       `INSERT INTO credits_log (user_id, delta, reason, ref_id)
-       VALUES ($1, $2, 'manual', NULL)`,
-      [req.params.id, delta]
+       VALUES ($1, $2, 'admin_adjustment', $3)`,
+      [req.params.id, delta, req.user.id]
     );
+
+    console.info('[ADMIN] credits adjusted', {
+      admin_id: req.user.id, target_id: req.params.id, delta,
+    });
 
     res.json({ id: rows[0].id, credits: rows[0].credits });
   } catch (err) {
@@ -142,6 +147,11 @@ router.patch('/users/:id/plan', async (req, res) => {
       [result.data, req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    console.info('[ADMIN] plan changed', {
+      admin_id: req.user.id, target_id: req.params.id, plan: result.data,
+    });
+
     res.json(rows[0]);
   } catch (err) {
     console.error('[ADMIN] plan error:', err.message);

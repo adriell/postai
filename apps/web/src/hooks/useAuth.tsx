@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, createContext, useContext } from 'react'
-import { getMe, clearToken, getToken } from '@/lib/api'
+import { getMe, logout as apiLogout } from '@/lib/api'
 
 interface User {
   id: string
@@ -29,15 +29,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!getToken()) { setLoading(false); return }
+    // O cookie httpOnly é enviado automaticamente pelo browser.
+    // Se não houver sessão válida a API retorna 401 e user fica null.
     getMe()
       .then(setUser)
-      .catch(() => clearToken())
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 
-  function logout() {
-    clearToken()
+  async function logout() {
+    await apiLogout()
     setUser(null)
     window.location.href = '/login'
   }
