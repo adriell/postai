@@ -3,8 +3,11 @@ import Cookies from 'js-cookie'
 
 const TOKEN_KEY = 'postai_token'
 
+// Usa URL relativa para que o rewrite do Next.js faça o proxy para a API.
+// Em dev: next.config.js redireciona /api/* → localhost:3011
+// Em prod: next.config.js redireciona /api/* → Railway (via INTERNAL_API_URL)
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3011',
+  baseURL: '',
   timeout: 30_000,
 })
 
