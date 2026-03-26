@@ -14,7 +14,7 @@ export const api = axios.create({
 
 // Redireciona para login em 401 (token expirado ou inválido)
 api.interceptors.response.use(
-  (res) => res,
+  undefined,
   async (err: any) => {
     if (err.response?.status === 401 && typeof window !== 'undefined') {
       // Limpa o cookie httpOnly no servidor antes de redirecionar
@@ -54,8 +54,15 @@ export interface GenerateParams {
   extra?: string
 }
 
+export interface Variation {
+  tone_label: string
+  caption: string
+  hashtags: string[]
+}
+
 export interface GenerateResult {
   id: string
+  variations: Variation[]
   caption: string
   hashtags: string[]
   credits: number

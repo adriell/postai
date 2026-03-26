@@ -2,7 +2,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
-import { generate } from '@/lib/api'
+import { generate, type Variation } from '@/lib/api'
 import { useAuth, AuthProvider } from '@/hooks/useAuth'
 
 const NICHOS = [
@@ -19,6 +19,11 @@ const TONES = [
   { label: 'Elegante',      value: 'elegante e sofisticado' },
 ]
 
+interface Result {
+  variations: Variation[]
+  processedImage: string
+}
+
 function DashboardInner() {
   const router             = useRouter()
   const { user, setUser }  = useAuth()
@@ -32,8 +37,11 @@ function DashboardInner() {
   const [language, setLanguage]    = useState('pt-BR')
   const [loading, setLoading]      = useState(false)
   const [error, setError]          = useState('')
-  const [result, setResult]        = useState<{ caption: string; hashtags: string[]; processedImage: string } | null>(null)
+  const [result, setResult]        = useState<Result | null>(null)
+  const [selected, setSelected]    = useState(0)
   const [copied, setCopied]        = useState(false)
+
+  const activeVariation: Variation | null = result?.variations[selected] ?? null
 
   function handleFile(file: File) {
     if (file.size > 5 * 1024 * 1024) { setError('Imagem deve ter no máximo 5MB'); return }
@@ -56,14 +64,17 @@ function DashboardInner() {
     setLoading(true)
     try {
       const res = await generate({ image: imageFile, nicho, tone, language, extra })
-      setResult({ caption: res.caption, hashtags: res.hashtags, processedImage: res.processedImage })
+      setResult({ variations: res.variations, processedImage: res.processedImage })
+      setSelected(0)
       setUser({ ...user, credits: res.credits })
     } catch (err: any) {
-      const msg = err.response?.data?.error || 'Erro ao gerar conteúdo'
-      if (err.response?.data?.code === 'NO_CREDITS') {
+      const code = err.response?.data?.code
+      if (code === 'NO_CREDITS') {
         setError('Créditos esgotados. Faça upgrade do plano.')
+      } else if (code === 'EMAIL_NOT_VERIFIED') {
+        setError('Verifique seu e-mail antes de gerar conteúdo.')
       } else {
-        setError(msg)
+        setError(err.response?.data?.error || 'Erro ao gerar conteúdo')
       }
     } finally {
       setLoading(false)
@@ -71,23 +82,19 @@ function DashboardInner() {
   }
 
   async function copyAll() {
-    if (!result) return
-    const text = `${result.caption}\n\n${result.hashtags.join(' ')}`
+    if (!activeVariation) return
+    const text = `${activeVariation.caption}\n\n${activeVariation.hashtags.join(' ')}`
     await navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2500)
   }
 
   async function shareInstagram() {
-    if (!result) return
-    const text = `${result.caption}\n\n${result.hashtags.join(' ')}`
+    if (!activeVariation) return
+    const text = `${activeVariation.caption}\n\n${activeVariation.hashtags.join(' ')}`
     if (typeof navigator !== 'undefined' && navigator.share) {
-      try {
-        await navigator.share({ text })
-        return
-      } catch {}
+      try { await navigator.share({ text }); return } catch {}
     }
-    // fallback: copia e abre Instagram
     await navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2500)
@@ -154,7 +161,7 @@ function DashboardInner() {
             </div>
           </div>
           <div className="mb-3">
-            <label className="block text-xs font-medium text-gray-600 mb-2">Tom da legenda</label>
+            <label className="block text-xs font-medium text-gray-600 mb-2">Tom preferido <span className="text-gray-400">(a IA gerará os 3)</span></label>
             <div className="flex flex-wrap gap-2">
               {TONES.map(t => (
                 <button key={t.value}
@@ -186,17 +193,39 @@ function DashboardInner() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
               </svg>
-              Gerando...
+              Gerando 3 variações...
             </span>
-          ) : 'Gerar legenda + hashtags'}
+          ) : 'Gerar 3 variações de legenda'}
         </button>
 
         {/* Resultado */}
-        {result && (
+        {result && activeVariation && (
           <div className="space-y-4">
+            {/* Seletor de variações */}
+            <div className="card p-3">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Escolha uma variação</p>
+              <div className="grid grid-cols-3 gap-2">
+                {result.variations.map((v, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setSelected(i); setCopied(false) }}
+                    className={`text-xs py-2 px-3 rounded-lg border font-medium transition text-left ${
+                      selected === i
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
+                    }`}
+                  >
+                    <span className="block font-semibold">{v.tone_label}</span>
+                    <span className={`block mt-0.5 text-[10px] ${selected === i ? 'text-blue-100' : 'text-gray-400'}`}>
+                      {v.caption.slice(0, 40)}…
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Preview estilo Instagram */}
             <div className="card overflow-hidden p-0">
-              {/* Header do post */}
               <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 via-pink-400 to-orange-400 flex items-center justify-center text-white text-xs font-bold">
                   {user.name?.[0]?.toUpperCase() ?? 'U'}
@@ -205,30 +234,24 @@ function DashboardInner() {
                   <p className="text-sm font-semibold text-gray-900 leading-none">{user.name ?? 'você'}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{nicho}</p>
                 </div>
+                <span className="ml-auto text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+                  {activeVariation.tone_label}
+                </span>
               </div>
 
-              {/* Imagem processada */}
-              <img
-                src={result.processedImage}
-                alt="post"
-                className="w-full aspect-square object-cover"
-              />
+              <img src={result.processedImage} alt="post" className="w-full aspect-square object-cover" />
 
-              {/* Ações */}
               <div className="px-4 pt-3 pb-1 flex gap-3 text-gray-500 text-lg">
-                <span>🤍</span>
-                <span>💬</span>
-                <span>📤</span>
+                <span>🤍</span><span>💬</span><span>📤</span>
               </div>
 
-              {/* Legenda + hashtags */}
               <div className="px-4 pb-4">
                 <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
                   <span className="font-semibold text-gray-900">{user.name ?? 'você'} </span>
-                  {result.caption}
+                  {activeVariation.caption}
                 </p>
                 <p className="text-sm text-blue-500 mt-2 leading-relaxed">
-                  {result.hashtags.join(' ')}
+                  {activeVariation.hashtags.join(' ')}
                 </p>
               </div>
             </div>
@@ -239,13 +262,8 @@ function DashboardInner() {
                 onClick={copyAll}
                 className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
               >
-                {copied ? (
-                  <><span>✓</span> Copiado!</>
-                ) : (
-                  <><span>📋</span> Copiar tudo</>
-                )}
+                {copied ? <><span>✓</span> Copiado!</> : <><span>📋</span> Copiar tudo</>}
               </button>
-
               <button
                 onClick={shareInstagram}
                 className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-medium text-white transition"
@@ -259,7 +277,7 @@ function DashboardInner() {
             </div>
 
             <button onClick={handleGenerate} disabled={loading} className="btn-secondary w-full py-2.5 text-sm">
-              Gerar outra versão
+              Gerar novas variações
             </button>
           </div>
         )}

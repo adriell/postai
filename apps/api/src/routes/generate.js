@@ -127,28 +127,32 @@ router.post('/', requireAuth, requireVerified, genLimit, upload.single('image'),
     const imageBase64    = forAI.toString('base64');
     const renderedBase64 = rendered.toString('base64');
 
-    // 5. Monta prompt
+    // 5. Monta prompt — solicita 3 variações de tom diferente
     const extraText = params.extra ? `\nDetalhe extra: "${params.extra}"` : '';
     const prompt = `Você é uma pessoa real que usa muito o Instagram no Brasil e sabe escrever legendas que parecem autênticas, não publicidade.
 
-Olha essa imagem e escreve uma legenda para o Instagram no nicho de "${params.nicho}".
-Tom: ${params.tone}.
+Olha essa imagem e cria 3 variações de legenda para o Instagram no nicho de "${params.nicho}".
 Idioma: ${params.language}.${extraText}
 
-A legenda deve parecer que foi escrita por uma pessoa, não por uma empresa. Evite frases muito formais, clichês de marketing e palavras como "incrível", "fantástico", "excepcional". Use linguagem natural, pode usar emojis com moderação. Pode ter um CTA no final, mas discreto.
+Cada variação deve ter um tom diferente e parecer escrita por uma pessoa real. Evite clichês de marketing.
+Use linguagem natural, emojis com moderação. CTA discreto se quiser.
 
 Responda APENAS em JSON válido, sem texto fora do JSON, sem markdown, sem backticks:
-{"caption":"...","hashtags":["#tag1","#tag2","#tag3","#tag4","#tag5","#tag6","#tag7","#tag8","#tag9","#tag10","#tag11","#tag12","#tag13","#tag14","#tag15"]}
+{"variations":[
+  {"tone_label":"Descontraído","caption":"...","hashtags":["#tag1","#tag2","#tag3","#tag4","#tag5","#tag6","#tag7","#tag8","#tag9","#tag10","#tag11","#tag12","#tag13","#tag14","#tag15"]},
+  {"tone_label":"Profissional","caption":"...","hashtags":["#tag1","#tag2","#tag3","#tag4","#tag5","#tag6","#tag7","#tag8","#tag9","#tag10","#tag11","#tag12","#tag13","#tag14","#tag15"]},
+  {"tone_label":"Inspirador","caption":"...","hashtags":["#tag1","#tag2","#tag3","#tag4","#tag5","#tag6","#tag7","#tag8","#tag9","#tag10","#tag11","#tag12","#tag13","#tag14","#tag15"]}
+]}
 
 Regras:
-- caption: 2 a 4 parágrafos curtos em ${params.language}, tom "${params.tone}", quebras de linha com \\n
-- hashtags: exatamente 15 tags relevantes, mix de populares e de nicho, sem espaços, com #
+- caption: 2 a 4 parágrafos curtos em ${params.language}, quebras de linha com \\n
+- hashtags: exatamente 15 tags relevantes por variação, mix de populares e de nicho, com #
 - Nenhum texto fora do JSON.`;
 
     // 6. Chama Claude API
     const message = await client.messages.create({
       model:      'claude-sonnet-4-20250514',
-      max_tokens: 1024,
+      max_tokens: 2048,
       messages: [{
         role: 'user',
         content: [
@@ -163,21 +167,25 @@ Regras:
     const clean  = raw.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
 
-    if (!parsed.caption || !Array.isArray(parsed.hashtags)) {
+    if (!Array.isArray(parsed.variations) || parsed.variations.length === 0) {
       throw new Error('Resposta da IA em formato inválido');
     }
+
+    // Usa a primeira variação como padrão no banco
+    const primary = parsed.variations[0];
 
     // 8. Atualiza geração como done
     await query(
       `UPDATE generations SET caption = $1, hashtags = $2, status = 'done' WHERE id = $3`,
-      [parsed.caption, parsed.hashtags, genId]
+      [primary.caption, primary.hashtags, genId]
     );
 
-    // 9. Retorna resultado
+    // 9. Retorna resultado com todas as variações
     res.json({
       id:             genId,
-      caption:        parsed.caption,
-      hashtags:       parsed.hashtags,
+      variations:     parsed.variations,
+      caption:        primary.caption,
+      hashtags:       primary.hashtags,
       credits:        req.user.credits - 1,
       processedImage: `data:image/jpeg;base64,${renderedBase64}`,
     });
