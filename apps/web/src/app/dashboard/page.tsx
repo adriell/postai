@@ -107,8 +107,30 @@ function DashboardInner() {
   }
 
   async function shareInstagram() {
-    if (!activeVariation) return
+    if (!activeVariation || !result) return
     const text = `${activeVariation.caption}\n\n${activeVariation.hashtags.join(' ')}`
+
+    // Converte base64 → Blob → File
+    const res  = await fetch(result.processedImage)
+    const blob = await res.blob()
+    const file = new File([blob], 'postai.jpg', { type: 'image/jpeg' })
+
+    // Mobile: Web Share API com arquivo (abre o share sheet nativo)
+    if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], text })
+        return
+      } catch { /* usuário cancelou — continua para o fallback */ }
+    }
+
+    // Desktop: baixa a imagem + copia legenda + abre Instagram
+    const url = URL.createObjectURL(blob)
+    const a   = document.createElement('a')
+    a.href     = url
+    a.download = 'postai.jpg'
+    a.click()
+    URL.revokeObjectURL(url)
+
     await navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2500)
