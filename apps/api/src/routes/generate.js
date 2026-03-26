@@ -33,11 +33,18 @@ const genLimit  = rateLimit({
   message: { error: 'Limite de gerações por minuto atingido. Aguarde.' }
 });
 
+const FORMAT_SIZES = {
+  feed:     { width: 1080, height: 1080 },
+  story:    { width: 1080, height: 1920 },
+  portrait: { width: 1080, height: 1350 },
+};
+
 const generateSchema = z.object({
   nicho:    z.string().min(1).max(100),
   tone:     z.string().min(1).max(100),
   language: z.string().default('pt-BR'),
   extra:    z.string().max(300).optional(),
+  format:   z.enum(['feed', 'story', 'portrait']).default('feed'),
 });
 
 // POST /api/generate
@@ -51,7 +58,10 @@ router.post('/', requireAuth, requireVerified, genLimit, upload.single('image'),
       tone:     req.body.tone,
       language: req.body.language,
       extra:    req.body.extra,
+      format:   req.body.format,
     });
+
+    const { width: W, height: H } = FORMAT_SIZES[params.format];
 
     if (!req.file) {
       return res.status(400).json({ error: 'Imagem obrigatória' });
@@ -85,18 +95,16 @@ router.post('/', requireAuth, requireVerified, genLimit, upload.single('image'),
       .toBuffer();
 
     // versão "renderizada" — foto inteira com fundo desfocado (sem cortar)
-    const SIZE = 1080;
-
     // 1. fundo: mesma imagem em cover + blur forte + escurecimento
     const background = await sharp(req.file.buffer)
-      .resize(SIZE, SIZE, { fit: 'cover', position: 'centre' })
+      .resize(W, H, { fit: 'cover', position: 'centre' })
       .blur(55)
       .modulate({ brightness: 0.55, saturation: 0.6 })
       .toBuffer();
 
     // 2. foto principal: cabe inteira (sem crop), com filtro profissional
     const foreground = await sharp(req.file.buffer)
-      .resize(SIZE, SIZE, { fit: 'inside', withoutEnlargement: false })
+      .resize(W, H, { fit: 'inside', withoutEnlargement: false })
       .normalise()
       .modulate({ saturation: 1.3, brightness: 1.04, hue: 6 })
       .linear(1.08, -10)
@@ -106,12 +114,12 @@ router.post('/', requireAuth, requireVerified, genLimit, upload.single('image'),
 
     // 3. vignete suave nas bordas
     const vignetteOverlay = Buffer.from(
-      `<svg width="${SIZE}" height="${SIZE}" xmlns="http://www.w3.org/2000/svg">` +
+      `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">` +
       '<defs><radialGradient id="vg" cx="50%" cy="50%" r="68%">' +
       '<stop offset="0%" stop-color="transparent"/>' +
       '<stop offset="100%" stop-color="rgba(0,0,0,0.32)"/>' +
       '</radialGradient></defs>' +
-      `<rect width="${SIZE}" height="${SIZE}" fill="url(#vg)"/>` +
+      `<rect width="${W}" height="${H}" fill="url(#vg)"/>` +
       '</svg>'
     );
 
@@ -188,6 +196,7 @@ Regras:
       hashtags:       primary.hashtags,
       credits:        req.user.credits - 1,
       processedImage: `data:image/jpeg;base64,${renderedBase64}`,
+      format:         params.format,
     });
 
   } catch (err) {

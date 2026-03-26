@@ -2,7 +2,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
-import { generate, type Variation } from '@/lib/api'
+import { generate, type Variation, type PostFormat } from '@/lib/api'
 import { useAuth, AuthProvider } from '@/hooks/useAuth'
 
 const NICHOS = [
@@ -19,9 +19,22 @@ const TONES = [
   { label: 'Elegante',      value: 'elegante e sofisticado' },
 ]
 
+const FORMATS: { value: PostFormat; label: string; hint: string }[] = [
+  { value: 'feed',     label: 'Feed',     hint: '1:1 · 1080×1080' },
+  { value: 'story',    label: 'Story',    hint: '9:16 · 1080×1920' },
+  { value: 'portrait', label: 'Portrait', hint: '4:5 · 1080×1350' },
+]
+
+const FORMAT_ASPECT: Record<PostFormat, string> = {
+  feed:     'aspect-square',
+  story:    'aspect-[9/16]',
+  portrait: 'aspect-[4/5]',
+}
+
 interface Result {
   variations: Variation[]
   processedImage: string
+  format: PostFormat
 }
 
 function DashboardInner() {
@@ -35,6 +48,7 @@ function DashboardInner() {
   const [tone, setTone]            = useState(TONES[0].value)
   const [extra, setExtra]          = useState('')
   const [language, setLanguage]    = useState('pt-BR')
+  const [format, setFormat]        = useState<PostFormat>('feed')
   const [loading, setLoading]      = useState(false)
   const [error, setError]          = useState('')
   const [result, setResult]        = useState<Result | null>(null)
@@ -63,8 +77,8 @@ function DashboardInner() {
     setError('')
     setLoading(true)
     try {
-      const res = await generate({ image: imageFile, nicho, tone, language, extra })
-      setResult({ variations: res.variations, processedImage: res.processedImage })
+      const res = await generate({ image: imageFile, nicho, tone, language, extra, format })
+      setResult({ variations: res.variations, processedImage: res.processedImage, format: res.format })
       setSelected(0)
       setUser({ ...user, credits: res.credits })
     } catch (err: any) {
@@ -175,6 +189,23 @@ function DashboardInner() {
               ))}
             </div>
           </div>
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-600 mb-2">Formato</label>
+            <div className="flex gap-2">
+              {FORMATS.map(f => (
+                <button key={f.value} onClick={() => setFormat(f.value)}
+                  className={`flex-1 text-xs py-2 px-2 rounded-lg border font-medium transition text-center ${
+                    format === f.value
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
+                  }`}
+                >
+                  <span className="block font-semibold">{f.label}</span>
+                  <span className={`block mt-0.5 text-[10px] ${format === f.value ? 'text-blue-100' : 'text-gray-400'}`}>{f.hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Detalhe extra <span className="text-gray-400">(opcional)</span></label>
             <input type="text" value={extra} onChange={e => setExtra(e.target.value)}
@@ -239,7 +270,7 @@ function DashboardInner() {
                 </span>
               </div>
 
-              <img src={result.processedImage} alt="post" className="w-full aspect-square object-cover" />
+              <img src={result.processedImage} alt="post" className={`w-full ${FORMAT_ASPECT[result.format]} object-cover`} />
 
               <div className="px-4 pt-3 pb-1 flex gap-3 text-gray-500 text-lg">
                 <span>🤍</span><span>💬</span><span>📤</span>

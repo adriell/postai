@@ -46,12 +46,15 @@ export async function logout() {
 }
 
 // ── Generate ──────────────────────────────────────────────────
+export type PostFormat = 'feed' | 'story' | 'portrait'
+
 export interface GenerateParams {
   image: File
   nicho: string
   tone: string
   language?: string
   extra?: string
+  format?: PostFormat
 }
 
 export interface Variation {
@@ -67,6 +70,7 @@ export interface GenerateResult {
   hashtags: string[]
   credits: number
   processedImage: string
+  format: PostFormat
 }
 
 export async function verifyEmail(token: string) {
@@ -95,6 +99,7 @@ export async function generate(params: GenerateParams): Promise<GenerateResult> 
   form.append('nicho',    params.nicho)
   form.append('tone',     params.tone)
   form.append('language', params.language || 'pt-BR')
+  form.append('format',   params.format   || 'feed')
   if (params.extra) form.append('extra', params.extra)
 
   const { data } = await api.post('/api/generate', form, {
