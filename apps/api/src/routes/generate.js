@@ -248,4 +248,79 @@ router.get('/history', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/generate/:id/schedule — agenda lembrete por e-mail
+router.post('/:id/schedule', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const { scheduled_at } = req.body;
+
+  if (!scheduled_at) {
+    return res.status(400).json({ error: 'scheduled_at obrigatório (ISO 8601)' });
+  }
+
+  const date = new Date(scheduled_at);
+  if (isNaN(date.getTime()) || date <= new Date()) {
+    return res.status(400).json({ error: 'Data deve ser futura' });
+  }
+
+  try {
+    const { rows } = await query(
+      `UPDATE generations
+       SET scheduled_at = $1, schedule_status = 'pending'
+       WHERE id = $2 AND user_id = $3 AND status = 'done'
+       RETURNING id, scheduled_at`,
+      [date.toISOString(), id, req.user.id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Geração não encontrada' });
+    }
+
+    res.json({ ok: true, scheduled_at: rows[0].scheduled_at });
+  } catch (err) {
+    console.error('[SCHEDULE] Erro:', err.message);
+    res.status(500).json({ error: 'Erro ao agendar' });
+  }
+});
+
+// DELETE /api/generate/:id/schedule — cancela agendamento
+router.delete('/:id/schedule', requireAuth, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const { rows } = await query(
+      `UPDATE generations
+       SET schedule_status = 'cancelled'
+       WHERE id = $1 AND user_id = $2 AND schedule_status = 'pending'
+       RETURNING id`,
+      [id, req.user.id]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Agendamento não encontrado ou já enviado' });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[SCHEDULE] Erro ao cancelar:', err.message);
+    res.status(500).json({ error: 'Erro ao cancelar agendamento' });
+  }
+});
+
+// GET /api/generate/scheduled — lista posts com lembrete pendente
+router.get('/scheduled', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT id, nicho, caption, scheduled_at, schedule_status
+       FROM generations
+       WHERE user_id = $1 AND schedule_status = 'pending'
+       ORDER BY scheduled_at ASC
+       LIMIT 20`,
+      [req.user.id]
+    );
+    res.json({ items: rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao buscar agendamentos' });
+  }
+});
+
 module.exports = router;

@@ -108,6 +108,16 @@ export async function generate(params: GenerateParams): Promise<GenerateResult> 
   return data
 }
 
+export async function schedulePost(id: string, scheduledAt: string) {
+  const { data } = await api.post(`/api/generate/${id}/schedule`, { scheduled_at: scheduledAt })
+  return data
+}
+
+export async function cancelSchedule(id: string) {
+  const { data } = await api.delete(`/api/generate/${id}/schedule`)
+  return data
+}
+
 export async function getHistory(page = 1, limit = 20) {
   const { data } = await api.get('/api/generate/history', { params: { page, limit } })
   return data

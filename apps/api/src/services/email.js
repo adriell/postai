@@ -97,4 +97,33 @@ async function _send(to, subject, html) {
   return client.emails.send({ from: FROM, to, subject, html });
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail };
+// ── Lembrete de post agendado ──────────────────────────────────
+
+async function sendScheduledPostReminder(email, name, caption, hashtags, scheduledAt) {
+  const dateStr = new Date(scheduledAt).toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
+  const hashtagLine = Array.isArray(hashtags) ? hashtags.join(' ') : hashtags;
+  const previewCaption = caption.length > 200 ? caption.slice(0, 200) + '…' : caption;
+
+  const body = `
+    <h2 style="margin:0 0 12px;font-size:20px;color:#111827;">Hora de postar! 📸</h2>
+    <p style="margin:0 0 16px;font-size:15px;color:#4b5563;line-height:1.7;">
+      Olá, <strong>${name}</strong>! Você agendou um lembrete para <strong>${dateStr}</strong>.
+      Aqui está a legenda que você preparou:
+    </p>
+    <div style="background:#f9fafb;border-left:4px solid #833ab4;border-radius:0 8px 8px 0;padding:16px 20px;margin:0 0 16px;">
+      <p style="margin:0 0 12px;font-size:14px;color:#1f2937;line-height:1.7;white-space:pre-wrap;">${previewCaption}</p>
+      <p style="margin:0;font-size:13px;color:#6366f1;">${hashtagLine}</p>
+    </div>
+    <p style="margin:0 0 24px;font-size:13px;color:#9ca3af;">
+      Copie a legenda acima, abra o Instagram e publique agora. 🚀
+    </p>
+    ${btnStyle('Abrir PostAI', APP_URL)}`;
+
+  return _send(email, `Lembrete de post — ${dateStr}`, baseTemplate('Lembrete de post', body));
+}
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendScheduledPostReminder };

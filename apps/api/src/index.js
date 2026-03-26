@@ -6,6 +6,7 @@ const cookieParser = require('cookie-parser');
 const rateLimit    = require('express-rate-limit');
 
 const { testConnection } = require('./db/client');
+const { startScheduler } = require('./services/scheduler');
 const authRoutes         = require('./routes/auth');
 const generateRoutes     = require('./routes/generate');
 const userRoutes         = require('./routes/user');
@@ -74,4 +75,5 @@ app.use((err, _req, res, _next) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 PostAI API rodando em http://localhost:${PORT}`);
   console.log(`   Health: http://localhost:${PORT}/health\n`);
+  startScheduler();
 });
