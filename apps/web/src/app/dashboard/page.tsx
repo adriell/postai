@@ -2,6 +2,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
+import ImageEditor from '@/components/ImageEditor'
 import { generate, type Variation, type PostFormat } from '@/lib/api'
 import { useAuth, AuthProvider } from '@/hooks/useAuth'
 
@@ -49,6 +50,7 @@ function DashboardInner() {
   const [extra, setExtra]          = useState('')
   const [language, setLanguage]    = useState('pt-BR')
   const [format, setFormat]        = useState<PostFormat>('feed')
+  const [editing, setEditing]      = useState(false)
   const [loading, setLoading]      = useState(false)
   const [error, setError]          = useState('')
   const [result, setResult]        = useState<Result | null>(null)
@@ -118,6 +120,14 @@ function DashboardInner() {
   if (!user) return null
 
   return (
+    <>
+    {editing && imageFile && (
+      <ImageEditor
+        file={imageFile}
+        onApply={file => { handleFile(file); setEditing(false) }}
+        onCancel={() => setEditing(false)}
+      />
+    )}
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="max-w-2xl mx-auto px-4 py-8">
@@ -134,10 +144,16 @@ function DashboardInner() {
           {imagePreview ? (
             <div className="relative">
               <img src={imagePreview} alt="preview" className="w-full max-h-56 object-cover rounded-lg" />
-              <button
-                onClick={() => { setImageFile(null); setPreview(null); setResult(null) }}
-                className="absolute top-2 right-2 bg-white rounded-full w-7 h-7 flex items-center justify-center shadow text-gray-500 hover:text-red-500 text-xs font-bold"
-              >✕</button>
+              <div className="absolute top-2 right-2 flex gap-1.5">
+                <button
+                  onClick={() => setEditing(true)}
+                  className="bg-white rounded-full px-2.5 h-7 flex items-center gap-1 shadow text-gray-600 hover:text-blue-600 text-xs font-medium"
+                >✏️ Editar</button>
+                <button
+                  onClick={() => { setImageFile(null); setPreview(null); setResult(null) }}
+                  className="bg-white rounded-full w-7 h-7 flex items-center justify-center shadow text-gray-500 hover:text-red-500 text-xs font-bold"
+                >✕</button>
+              </div>
             </div>
           ) : (
             <div
@@ -314,6 +330,7 @@ function DashboardInner() {
         )}
       </main>
     </div>
+    </>
   )
 }
 
