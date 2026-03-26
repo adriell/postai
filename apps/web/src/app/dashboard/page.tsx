@@ -3,7 +3,7 @@ import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Navbar from '@/components/Navbar'
 import ImageEditor from '@/components/ImageEditor'
-import { generate, schedulePost, cancelSchedule, type Variation, type PostFormat } from '@/lib/api'
+import { generate, type Variation, type PostFormat } from '@/lib/api'
 import { useAuth, AuthProvider } from '@/hooks/useAuth'
 
 const NICHOS = [
@@ -57,9 +57,6 @@ function DashboardInner() {
   const [result, setResult]        = useState<Result | null>(null)
   const [selected, setSelected]    = useState(0)
   const [copied, setCopied]        = useState(false)
-  const [scheduleDate, setScheduleDate]   = useState('')
-  const [scheduledAt, setScheduledAt]     = useState('')
-  const [scheduleLoading, setScheduleLoading] = useState(false)
 
   const activeVariation: Variation | null = result?.variations?.[selected] ?? null
 
@@ -85,8 +82,6 @@ function DashboardInner() {
     try {
       const res = await generate({ image: imageFile, nicho, tone, language, extra, format })
       setResult({ id: res.id, variations: res.variations, processedImage: res.processedImage, format: res.format })
-      setScheduleDate('')
-      setScheduledAt('')
       setSelected(0)
       setUser({ ...user, credits: res.credits })
     } catch (err: any) {
@@ -114,44 +109,11 @@ function DashboardInner() {
   async function shareInstagram() {
     if (!activeVariation) return
     const text = `${activeVariation.caption}\n\n${activeVariation.hashtags.join(' ')}`
-    if (typeof navigator !== 'undefined' && navigator.share) {
-      try { await navigator.share({ text }); return } catch {}
-    }
     await navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2500)
     window.open('https://www.instagram.com', '_blank')
   }
-
-  async function handleSchedule() {
-    if (!result || !scheduleDate) return
-    setScheduleLoading(true)
-    try {
-      const res = await schedulePost(result.id, new Date(scheduleDate).toISOString())
-      setScheduledAt(res.scheduled_at)
-    } catch {
-      setError('Erro ao agendar lembrete')
-    } finally {
-      setScheduleLoading(false)
-    }
-  }
-
-  async function handleCancelSchedule() {
-    if (!result) return
-    setScheduleLoading(true)
-    try {
-      await cancelSchedule(result.id)
-      setScheduledAt('')
-      setScheduleDate('')
-    } catch {
-      setError('Erro ao cancelar agendamento')
-    } finally {
-      setScheduleLoading(false)
-    }
-  }
-
-  // min datetime para o input (agora + 2min)
-  const minDate = new Date(Date.now() + 2 * 60_000).toISOString().slice(0, 16)
 
   if (!user) return null
 
@@ -357,40 +319,6 @@ function DashboardInner() {
                 </svg>
                 Compartilhar
               </button>
-            </div>
-
-            {/* Agendamento de lembrete */}
-            <div className="card p-4">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Agendar lembrete por e-mail</p>
-              {scheduledAt ? (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-green-700 bg-green-50 px-3 py-1.5 rounded-lg">
-                    ✓ Agendado para {new Date(scheduledAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
-                  </span>
-                  <button
-                    onClick={handleCancelSchedule}
-                    disabled={scheduleLoading}
-                    className="text-xs text-red-500 hover:text-red-700 ml-3"
-                  >Cancelar</button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <input
-                    type="datetime-local"
-                    value={scheduleDate}
-                    min={minDate}
-                    onChange={e => setScheduleDate(e.target.value)}
-                    className="input text-sm flex-1"
-                  />
-                  <button
-                    onClick={handleSchedule}
-                    disabled={scheduleLoading || !scheduleDate}
-                    className="btn-primary px-4 text-sm whitespace-nowrap disabled:opacity-50"
-                  >
-                    {scheduleLoading ? '…' : 'Agendar'}
-                  </button>
-                </div>
-              )}
             </div>
 
             <button onClick={handleGenerate} disabled={loading} className="btn-secondary w-full py-2.5 text-sm">
