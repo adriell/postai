@@ -61,7 +61,7 @@ function DashboardInner() {
   const [scheduledAt, setScheduledAt]     = useState('')
   const [scheduleLoading, setScheduleLoading] = useState(false)
 
-  const activeVariation: Variation | null = result?.variations[selected] ?? null
+  const activeVariation: Variation | null = result?.variations?.[selected] ?? null
 
   function handleFile(file: File) {
     if (file.size > 5 * 1024 * 1024) { setError('Imagem deve ter no máximo 5MB'); return }
@@ -288,7 +288,7 @@ function DashboardInner() {
             <div className="card p-3">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Escolha uma variação</p>
               <div className="grid grid-cols-3 gap-2">
-                {result.variations.map((v, i) => (
+                {(result.variations ?? []).map((v, i) => (
                   <button
                     key={i}
                     onClick={() => { setSelected(i); setCopied(false) }}
