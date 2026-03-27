@@ -21,6 +21,11 @@ export default function Navbar() {
               <Link href="/history" className="text-sm text-gray-600 hover:text-gray-900">
                 Histórico
               </Link>
+              {user.is_admin && (
+                <Link href="/admin" className="text-sm text-red-500 hover:text-red-700 font-medium">
+                  Admin
+                </Link>
+              )}
               <div className="flex items-center gap-2 ml-2">
                 <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full font-medium">
                   {user.credits} créditos

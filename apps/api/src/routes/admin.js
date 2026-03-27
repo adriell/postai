@@ -159,4 +159,55 @@ router.patch('/users/:id/plan', async (req, res) => {
   }
 });
 
+// GET /api/admin/stats/activity — gerações por dia (últimos 30 dias)
+router.get('/stats/activity', async (_req, res) => {
+  try {
+    const { rows } = await query(`
+      SELECT DATE(created_at)::text AS day, COUNT(*)::int AS count
+      FROM generations
+      WHERE status = 'done'
+        AND created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY day ORDER BY day
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('[ADMIN] activity error:', err.message);
+    res.status(500).json({ error: 'Erro ao buscar atividade' });
+  }
+});
+
+// GET /api/admin/stats/niches — top 10 nichos mais usados
+router.get('/stats/niches', async (_req, res) => {
+  try {
+    const { rows } = await query(`
+      SELECT nicho, COUNT(*)::int AS count
+      FROM generations WHERE status = 'done'
+      GROUP BY nicho ORDER BY count DESC LIMIT 10
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('[ADMIN] niches error:', err.message);
+    res.status(500).json({ error: 'Erro ao buscar nichos' });
+  }
+});
+
+// GET /api/admin/recent — últimas 20 gerações
+router.get('/recent', async (_req, res) => {
+  try {
+    const { rows } = await query(`
+      SELECT g.id, g.nicho, g.tone, g.created_at,
+             u.name, u.email
+      FROM generations g
+      JOIN users u ON u.id = g.user_id
+      WHERE g.status = 'done'
+      ORDER BY g.created_at DESC
+      LIMIT 20
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('[ADMIN] recent error:', err.message);
+    res.status(500).json({ error: 'Erro ao buscar gerações recentes' });
+  }
+});
+
 module.exports = router;

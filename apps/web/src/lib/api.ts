@@ -133,3 +133,56 @@ export async function getCreditsLog() {
   const { data } = await api.get('/api/user/credits/log')
   return data.log
 }
+
+// ── Admin ─────────────────────────────────────────────────────
+export async function getAdminStats() {
+  const { data } = await api.get('/api/admin/stats')
+  return data
+}
+
+export async function getAdminActivity() {
+  const { data } = await api.get('/api/admin/stats/activity')
+  return data as { day: string; count: number }[]
+}
+
+export async function getAdminNiches() {
+  const { data } = await api.get('/api/admin/stats/niches')
+  return data as { nicho: string; count: number }[]
+}
+
+export async function getAdminRecent() {
+  const { data } = await api.get('/api/admin/recent')
+  return data as { id: string; nicho: string; tone: string; created_at: string; name: string; email: string }[]
+}
+
+export async function getAdminUsers(page = 1, search = '') {
+  const { data } = await api.get('/api/admin/users', { params: { page, search } })
+  return data as {
+    items: AdminUser[]
+    total: number
+    page: number
+    limit: number
+  }
+}
+
+export interface AdminUser {
+  id: string
+  email: string
+  name: string
+  plan: string
+  credits: number
+  email_verified: boolean
+  is_admin: boolean
+  created_at: string
+  generation_count: number
+}
+
+export async function adminUpdateCredits(id: string, delta: number) {
+  const { data } = await api.patch(`/api/admin/users/${id}/credits`, { delta })
+  return data as { id: string; credits: number }
+}
+
+export async function adminUpdatePlan(id: string, plan: string) {
+  const { data } = await api.patch(`/api/admin/users/${id}/plan`, { plan })
+  return data as { id: string; plan: string }
+}
